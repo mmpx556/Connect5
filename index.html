@@ -100,7 +100,6 @@
     <div class="dialog">
       <h3>Choose Your Color</h3>
       <div class="color-options" id="playerColors"></div>
-      <button onclick="confirmColors()">Next</button>
     </div>
   </div>
 
@@ -119,7 +118,6 @@
     let board, cells, currentPlayer, gameOver;
     let playerColors = [];
     let gameMode = null;
-    let computerStarts = true;
 
     const colorChoices = [
       { name: "Surfmist", value: "#ECEBE9" },
@@ -134,69 +132,43 @@
     function setGameMode(mode) {
       gameMode = mode;
       document.getElementById("modeOverlay").style.display = "none";
-
-      if (mode === "computer") {
-        document.getElementById("colorOverlay").style.display = "flex";
-        const container = document.getElementById("playerColors");
-        container.innerHTML = "";
-        colorChoices.forEach(color => {
-          const swatch = document.createElement("div");
-          swatch.className = "color-swatch";
-          swatch.style.backgroundColor = color.value;
-          swatch.onclick = () => {
-            playerColors[0] = "#B71C1C"; // Red for computer
-            playerColors[1] = color.value;
-            container.querySelectorAll(".selected").forEach(el => el.classList.remove("selected"));
-            swatch.classList.add("selected");
-          };
-          container.appendChild(swatch);
-        });
-      } else {
-        playerColors = JSON.parse(sessionStorage.getItem("connect5Colors") || "[]");
-        if (playerColors.length === 2) {
-          init();
-        } else {
-          document.getElementById("colorOverlay").style.display = "flex";
-          const container = document.getElementById("playerColors");
-          container.innerHTML = "";
-          [...colorChoices, { name: "Red", value: "#B71C1C" }].forEach(color => {
-            const swatch = document.createElement("div");
-            swatch.className = "color-swatch";
-            swatch.style.backgroundColor = color.value;
-            swatch.onclick = () => {
-              playerColors = [color.value];
-              container.querySelectorAll(".selected").forEach(el => el.classList.remove("selected"));
-              swatch.classList.add("selected");
-            };
-            container.appendChild(swatch);
-          });
-        }
-      }
+      setupColorPicker();
     }
 
-    function confirmColors() {
-      if (gameMode === "human") {
-        if (playerColors.length < 1) return alert("Pick player 1 color.");
-        const p1 = playerColors[0];
-        const remaining = [...colorChoices.map(c => c.value), "#B71C1C"].filter(c => c !== p1);
-        playerColors[1] = remaining[0];
-        sessionStorage.setItem("connect5Colors", JSON.stringify(playerColors));
-        document.getElementById("colorOverlay").style.display = "none";
-        init();
-      } else {
-        document.getElementById("colorOverlay").style.display = "none";
-        document.getElementById("firstOverlay").style.display = "flex";
-      }
+    function setupColorPicker() {
+      const container = document.getElementById("playerColors");
+      container.innerHTML = "";
+      document.getElementById("colorOverlay").style.display = "flex";
+      colorChoices.forEach(color => {
+        const swatch = document.createElement("div");
+        swatch.className = "color-swatch";
+        swatch.style.backgroundColor = color.value;
+        swatch.onclick = () => {
+          if (gameMode === "computer") {
+            playerColors = ["#B71C1C", color.value]; // Computer is red
+            document.getElementById("colorOverlay").style.display = "none";
+            document.getElementById("firstOverlay").style.display = "flex";
+          } else {
+            playerColors = [color.value];
+            const remaining = [...colorChoices.map(c => c.value), "#B71C1C"].filter(c => c !== color.value);
+            playerColors[1] = remaining[0];
+            sessionStorage.setItem("connect5Colors", JSON.stringify(playerColors));
+            document.getElementById("colorOverlay").style.display = "none";
+            init(2); // Human vs Human: Human always starts
+          }
+        };
+        container.appendChild(swatch);
+      });
     }
 
     function setFirstPlayer(player) {
-      currentPlayer = player;
       document.getElementById("firstOverlay").style.display = "none";
-      init();
+      init(player);
     }
 
-    function init() {
+    function init(startingPlayer = 1) {
       board = Array(10).fill().map(() => Array(10).fill(0));
+      currentPlayer = startingPlayer;
       gameOver = false;
       grid.innerHTML = "";
       cells = [];
@@ -230,80 +202,95 @@
       if (checkWin(row, col)) {
         gameOver = true;
         setTimeout(() => {
-          alert(`Player ${player === 1 ? "Computer" : "Player"} wins!`);
+          alert(`${getColorName(playerColors[player - 1])} wins!`);
         }, 500);
         return;
       }
 
       currentPlayer = currentPlayer === 1 ? 2 : 1;
       if (gameMode === "computer" && currentPlayer === 1 && !gameOver) {
-        setTimeout(computerMove, 300);
+        setTimeout(computerMove, 100);
       }
+    }
+
+    function getColorName(hex) {
+      const map = {
+        "#B71C1C": "Red",
+        "#005AA9": "Blue",
+        "#ECEBE9": "Surfmist",
+        "#1B5E20": "Green"
+      };
+      return map[hex] || "Player";
     }
 
     function computerMove() {
-      const scores = [];
-      const directions = [[0,1],[1,0],[1,1],[1,-1]];
+      let bestScore = -Infinity, move;
       for (let r = 0; r < 10; r++) {
         for (let c = 0; c < 10; c++) {
-          if (board[r][c] === 0 && hasNearby(r, c)) {
+          if (board[r][c] === 0) {
             board[r][c] = 1;
-            let score = evaluateBoard(1) - evaluateBoard(2);
+            let score = minimax(board, 0, false, -Infinity, Infinity);
             board[r][c] = 0;
-            scores.push({ score, r, c });
+            if (score > bestScore) {
+              bestScore = score;
+              move = [r, c];
+            }
           }
         }
       }
-      scores.sort((a, b) => b.score - a.score);
-      if (scores.length) makeMove(scores[0].r, scores[0].c, 1);
+      if (move) makeMove(move[0], move[1], 1);
     }
 
-    function hasNearby(r, c) {
-      for (let i = -2; i <= 2; i++) {
-        for (let j = -2; j <= 2; j++) {
-          const nr = r + i, nc = c + j;
-          if (nr >= 0 && nr < 10 && nc >= 0 && nc < 10 && board[nr][nc] !== 0) return true;
-        }
-      }
-      return false;
-    }
+    function minimax(board, depth, isMax, alpha, beta) {
+      const result = checkWinner();
+      if (result === 1) return 100 - depth;
+      if (result === 2) return -100 + depth;
+      if (isFull() || depth >= 3) return 0;
 
-    function evaluateBoard(player) {
-      let score = 0;
-      const patterns = [
-        { regex: /1111/, score: 1000 },
-        { regex: /011110/, score: 500 },
-        { regex: /111/, score: 50 },
-        { regex: /11/, score: 10 }
-      ];
-
-      function lineScore(line) {
-        let total = 0;
-        const str = line.map(v => v === player ? 1 : 0).join('');
-        patterns.forEach(p => { if (p.regex.test(str)) total += p.score; });
-        return total;
-      }
-
-      for (let i = 0; i < 10; i++) {
-        const row = board[i];
-        const col = board.map(r => r[i]);
-        score += lineScore(row);
-        score += lineScore(col);
-      }
-
-      for (let i = -9; i <= 9; i++) {
-        const d1 = [], d2 = [];
-        for (let j = 0; j < 10; j++) {
-          if (j + i >= 0 && j + i < 10) {
-            d1.push(board[j][j + i]);
-            d2.push(board[j][9 - j - i]);
+      if (isMax) {
+        let maxEval = -Infinity;
+        for (let r = 0; r < 10; r++) {
+          for (let c = 0; c < 10; c++) {
+            if (board[r][c] === 0) {
+              board[r][c] = 1;
+              let eval = minimax(board, depth + 1, false, alpha, beta);
+              board[r][c] = 0;
+              maxEval = Math.max(maxEval, eval);
+              alpha = Math.max(alpha, eval);
+              if (beta <= alpha) break;
+            }
           }
         }
-        score += lineScore(d1);
-        score += lineScore(d2);
+        return maxEval;
+      } else {
+        let minEval = Infinity;
+        for (let r = 0; r < 10; r++) {
+          for (let c = 0; c < 10; c++) {
+            if (board[r][c] === 0) {
+              board[r][c] = 2;
+              let eval = minimax(board, depth + 1, true, alpha, beta);
+              board[r][c] = 0;
+              minEval = Math.min(minEval, eval);
+              beta = Math.min(beta, eval);
+              if (beta <= alpha) break;
+            }
+          }
+        }
+        return minEval;
       }
+    }
 
-      return score;
+    function isFull() {
+      return board.every(row => row.every(cell => cell !== 0));
+    }
+
+    function checkWinner() {
+      for (let r = 0; r < 10; r++) {
+        for (let c = 0; c < 10; c++) {
+          if (board[r][c] && checkWin(r, c)) return board[r][c];
+        }
+      }
+      return 0;
     }
 
     function checkWin(r, c) {
