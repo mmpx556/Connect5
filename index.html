@@ -15,6 +15,7 @@
       justify-content: center;
       height: 100vh;
     }
+
     .grid {
       display: grid;
       grid-template-columns: repeat(10, 40px);
@@ -23,6 +24,7 @@
       background-color: #80008055;
       margin-bottom: 20px;
     }
+
     .cell {
       width: 40px;
       height: 40px;
@@ -30,8 +32,7 @@
       border: 1px solid #80008055;
       transition: background-color 0.3s;
     }
-    .red { background-color: red !important; }
-    .blue { background-color: blue !important; }
+
     button {
       padding: 8px 16px;
       font-size: 16px;
@@ -41,8 +42,42 @@
       color: white;
       cursor: pointer;
     }
+
     button:hover {
       background-color: #a050a0;
+    }
+
+    .overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 10;
+      color: white;
+    }
+
+    .color-picker {
+      background: #222;
+      padding: 20px;
+      border-radius: 12px;
+      text-align: center;
+    }
+
+    .color-options {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .color-swatch {
+      width: 40px;
+      height: 40px;
+      border-radius: 4px;
+      cursor: pointer;
+      border: 2px solid white;
     }
   </style>
 </head>
@@ -50,9 +85,75 @@
   <div class="grid" id="grid"></div>
   <button onclick="resetGame()">Reset Game</button>
 
+  <div class="overlay" id="colorOverlay" style="display:none;">
+    <div class="color-picker">
+      <h3>Choose Player Colors</h3>
+      <p>Player 1:</p>
+      <div class="color-options" id="player1Colors"></div>
+      <p>Player 2:</p>
+      <div class="color-options" id="player2Colors"></div>
+      <button onclick="confirmColors()">Start Game</button>
+    </div>
+  </div>
+
   <script>
     const grid = document.getElementById("grid");
     let board, cells, currentPlayer, gameOver;
+    let playerColors = [];
+
+    const colorChoices = [
+      { name: "Surfmist", value: "#ECEBE9" },
+      { name: "Blue", value: "#005AA9" },
+      { name: "Red", value: "#B71C1C" },
+      { name: "Green", value: "#1B5E20" },
+    ];
+
+    function setupColorPicker() {
+      const storedColors = sessionStorage.getItem("connect5Colors");
+      if (storedColors) {
+        playerColors = JSON.parse(storedColors);
+        init();
+        return;
+      }
+
+      document.getElementById("colorOverlay").style.display = "flex";
+      const p1Container = document.getElementById("player1Colors");
+      const p2Container = document.getElementById("player2Colors");
+
+      colorChoices.forEach(color => {
+        const p1 = document.createElement("div");
+        const p2 = document.createElement("div");
+        [p1, p2].forEach(swatch => {
+          swatch.className = "color-swatch";
+          swatch.style.backgroundColor = color.value;
+        });
+
+        p1.onclick = () => {
+          playerColors[0] = color.value;
+          p1Container.querySelectorAll(".selected").forEach(el => el.classList.remove("selected"));
+          p1.classList.add("selected");
+        };
+
+        p2.onclick = () => {
+          playerColors[1] = color.value;
+          p2Container.querySelectorAll(".selected").forEach(el => el.classList.remove("selected"));
+          p2.classList.add("selected");
+        };
+
+        p1Container.appendChild(p1);
+        p2Container.appendChild(p2);
+      });
+    }
+
+    function confirmColors() {
+      if (playerColors.length < 2 || playerColors[0] === playerColors[1]) {
+        alert("Choose two different colors.");
+        return;
+      }
+      sessionStorage.setItem("connect5Colors", JSON.stringify(playerColors));
+      document.getElementById("colorOverlay").style.display = "none";
+      init();
+    }
 
     function init() {
       board = Array(10).fill().map(() => Array(10).fill(0));
@@ -70,10 +171,12 @@
         cell.addEventListener("click", () => {
           if (gameOver || board[row][col] !== 0) return;
           board[row][col] = currentPlayer;
-          cell.classList.add(currentPlayer === 1 ? "red" : "blue");
+          cell.style.backgroundColor = playerColors[currentPlayer - 1];
           if (checkWin(row, col)) {
-            alert(`Player ${currentPlayer === 1 ? "Red" : "Blue"} wins!`);
             gameOver = true;
+            setTimeout(() => {
+              alert(`Player ${currentPlayer} wins!`);
+            }, 500); // Let the color show before alert
             return;
           }
           currentPlayer = currentPlayer === 1 ? 2 : 1;
@@ -88,10 +191,9 @@
     function checkWin(r, c) {
       const player = board[r][c];
       const directions = [[0,1],[1,0],[1,1],[1,-1]];
-      for (const [dr, dc] of directions) {
+      for (const [dr,dc] of directions) {
         let count = 1;
-        // Check both directions
-        for (const step of [-1, 1]) {
+        for (const step of [-1,1]) {
           let nr = r + dr * step;
           let nc = c + dc * step;
           while (nr >= 0 && nr < 10 && nc >= 0 && nc < 10 && board[nr][nc] === player) {
@@ -106,11 +208,4 @@
     }
 
     function resetGame() {
-      init();
-    }
-
-    init();
-  </script>
-</body>
-</html>
-``
+      init(); //
