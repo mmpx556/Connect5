@@ -2,29 +2,249 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Connect 5</title>
+  <title>Connect 5 - Neon Theme</title>
   <style>
     body {
-      background: black;
-      color: white;
-      font-family: sans-serif;
-      text-align: center;
       margin: 0;
-      padding: 2em;
+      font-family: 'Segoe UI', sans-serif;
+      background: radial-gradient(circle at center, #0d0d0d 0%, #000000 100%);
+      color: #0ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
     }
-    .note {
-      margin-top: 2em;
-      font-size: 0.9em;
-      color: #ccc;
+    h1 {
+      text-shadow: 0 0 10px #0ff;
+    }
+    .scoreboard {
+      font-size: 20px;
+      margin: 10px;
+      color: #0ff;
+      text-shadow: 0 0 5px #0ff;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(10, 50px);
+      grid-template-rows: repeat(10, 50px);
+      gap: 4px;
+      background-color: #111;
+      padding: 10px;
+      border-radius: 10px;
+      box-shadow: 0 0 20px #0ff;
+    }
+    .cell {
+      width: 50px;
+      height: 50px;
+      background-color: #000;
+      border-radius: 50%;
+      transition: 0.2s;
+      box-shadow: inset 0 0 8px #000;
+    }
+    .red {
+      background-color: #ff004c;
+      box-shadow: 0 0 10px #ff004c;
+    }
+    .blue {
+      background-color: #00aaff;
+      box-shadow: 0 0 10px #00aaff;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 10px;
+      font-size: 16px;
+      color: #0ff;
+      background-color: #111;
+      border: 1px solid #0ff;
+      border-radius: 6px;
+      cursor: pointer;
+      box-shadow: 0 0 10px #0ff;
+    }
+    button:hover {
+      background-color: #222;
+    }
+    .overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 10;
+    }
+    .dialog {
+      background: #222;
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      color: #fff;
     }
   </style>
 </head>
 <body>
-  <h1>Connect 5 (Fast AI Edition)</h1>
-  <p>Now with smarter move selection and Colorbond® colour compliance.</p>
-
-  <div class="note">
-    * Surfmist® is a registered trademark of BlueScope Steel Limited and is used here for color reference purposes only.
+  <h1>Connect 5</h1>
+  <div class="scoreboard" id="scoreboard">Player 1: 0 | Player 2: 0</div>
+  <div class="grid" id="grid"></div>
+  <div>
+    <button onclick="resetGame()">Reset</button>
+    <button onclick="showSetup()">New Game</button>
   </div>
+
+  <div class="overlay" id="setup" style="display:none;">
+    <div class="dialog">
+      <h2>Choose Game Mode</h2>
+      <button onclick="startGame('human')">Two Players</button>
+      <button onclick="startGame('computer')">Vs Computer</button>
+    </div>
+  </div>
+
+  <script>
+    const grid = document.getElementById("grid");
+    const scoreboard = document.getElementById("scoreboard");
+    const setup = document.getElementById("setup");
+
+    let board, cells, currentPlayer, gameOver;
+    let mode = "human";
+    let scores = [0, 0];
+    const classes = ["red", "blue"];
+
+    function showSetup() {
+      setup.style.display = "flex";
+    }
+
+    function startGame(selectedMode) {
+      mode = selectedMode;
+      scores = [0, 0];
+      setup.style.display = "none";
+      resetGame();
+    }
+
+    function updateScoreboard() {
+      scoreboard.textContent = `${mode === 'computer' ? "You" : "Player 1"}: ${scores[1]} | ${mode === 'computer' ? "Computer" : "Player 2"}: ${scores[0]}`;
+    }
+
+    function resetGame() {
+      board = Array.from({ length: 10 }, () => Array(10).fill(0));
+      currentPlayer = 1;
+      gameOver = false;
+      grid.innerHTML = "";
+      cells = [];
+
+      for (let r = 0; r < 10; r++) {
+        cells[r] = [];
+        for (let c = 0; c < 10; c++) {
+          const cell = document.createElement("div");
+          cell.className = "cell";
+          grid.appendChild(cell);
+          cells[r][c] = cell;
+
+          cell.addEventListener("click", () => {
+            if (gameOver || board[r][c] !== 0 || (mode === 'computer' && currentPlayer === 1)) return;
+            makeMove(r, c, 2);
+          });
+        }
+      }
+
+      updateScoreboard();
+      if (mode === 'computer' && currentPlayer === 1) setTimeout(computerMove, 300);
+    }
+
+    function makeMove(r, c, player) {
+      if (board[r][c] !== 0) return;
+      board[r][c] = player;
+      cells[r][c].classList.add(classes[player - 1]);
+
+      if (checkWin(r, c)) {
+        gameOver = true;
+        scores[player - 1]++;
+        updateScoreboard();
+        setTimeout(() => alert(`${mode === 'computer' && player === 1 ? "Computer" : player === 2 ? "You" : "Player " + player} wins!`), 100);
+        return;
+      }
+
+      currentPlayer = currentPlayer === 1 ? 2 : 1;
+      if (mode === 'computer' && currentPlayer === 1 && !gameOver) setTimeout(computerMove, 300);
+    }
+
+    function computerMove() {
+      let best = null, bestScore = -Infinity;
+      for (let r = 0; r < 10; r++) {
+        for (let c = 0; c < 10; c++) {
+          if (board[r][c] === 0 && isNearMove(r, c)) {
+            board[r][c] = 1;
+            const score = evaluateBoard(1) - evaluateBoard(2);
+            board[r][c] = 0;
+            if (score > bestScore) {
+              bestScore = score;
+              best = [r, c];
+            }
+          }
+        }
+      }
+      if (best) makeMove(best[0], best[1], 1);
+    }
+
+    function isNearMove(r, c) {
+      for (let i = -1; i <= 1; i++) {
+        for (let j = -1; j <= 1; j++) {
+          if (board[r + i]?.[c + j]) return true;
+        }
+      }
+      return false;
+    }
+
+    function evaluateBoard(player) {
+      let score = 0;
+      const lines = [
+        ...board,
+        ...board[0].map((_, c) => board.map(row => row[c])),
+        ...diagonals(board),
+        ...diagonals(board.map(row => [...row].reverse()))
+      ];
+      for (let line of lines) {
+        const str = line.map(cell => cell === player ? 'X' : ' ').join('');
+        if (str.includes("XXXXX")) score += 1000;
+        if (str.includes("XXXX")) score += 100;
+        if (str.includes("XXX")) score += 10;
+      }
+      return score;
+    }
+
+    function diagonals(matrix) {
+      const diags = [];
+      for (let i = 0; i <= 2 * matrix.length - 1; i++) {
+        let d1 = [], d2 = [];
+        for (let j = 0; j <= i; j++) {
+          let k = i - j;
+          if (j < matrix.length && k < matrix.length) {
+            d1.push(matrix[j][k]);
+            d2.push(matrix[k][j]);
+          }
+        }
+        diags.push(d1, d2);
+      }
+      return diags;
+    }
+
+    function checkWin(r, c) {
+      const player = board[r][c];
+      const dirs = [[1,0], [0,1], [1,1], [1,-1]];
+      for (let [dr, dc] of dirs) {
+        let count = 1;
+        for (let step of [-1, 1]) {
+          let nr = r + step * dr, nc = c + step * dc;
+          while (nr >= 0 && nr < 10 && nc >= 0 && nc < 10 && board[nr][nc] === player) {
+            count++;
+            nr += step * dr;
+            nc += step * dc;
+          }
+        }
+        if (count >= 5) return true;
+      }
+      return false;
+    }
+
+    showSetup();
+  </script>
 </body>
 </html>
