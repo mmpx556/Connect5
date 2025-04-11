@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Connect 5 Game</title>
+  <title>Connect 5</title>
   <style>
     body {
       margin: 0;
@@ -12,10 +12,10 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-start;
       height: 100vh;
+      padding-top: 20px;
     }
-
     .grid {
       display: grid;
       grid-template-columns: repeat(10, 40px);
@@ -24,7 +24,6 @@
       background-color: #80008055;
       margin-bottom: 20px;
     }
-
     .cell {
       width: 40px;
       height: 40px;
@@ -32,7 +31,6 @@
       border: 1px solid #80008055;
       transition: background-color 0.3s;
     }
-
     button {
       padding: 8px 16px;
       font-size: 16px;
@@ -41,12 +39,11 @@
       background-color: #800080;
       color: white;
       cursor: pointer;
+      margin: 5px;
     }
-
     button:hover {
       background-color: #a050a0;
     }
-
     .overlay {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
@@ -57,21 +54,18 @@
       z-index: 10;
       color: white;
     }
-
-    .color-picker {
+    .dialog {
       background: #222;
       padding: 20px;
       border-radius: 12px;
       text-align: center;
     }
-
-    .color-options {
+    .color-options, .mode-options, .difficulty-options {
       display: flex;
       justify-content: center;
       gap: 10px;
-      margin-top: 10px;
+      margin: 10px 0;
     }
-
     .color-swatch {
       width: 40px;
       height: 40px;
@@ -79,15 +73,28 @@
       cursor: pointer;
       border: 2px solid white;
     }
+    .selected {
+      outline: 3px solid yellow;
+    }
   </style>
 </head>
 <body>
   <div class="grid" id="grid"></div>
-  <button onclick="resetGame()">Reset Game</button>
+  <button onclick="showModeOverlay()">Reset & Choose Opponent</button>
+
+  <div class="overlay" id="modeOverlay">
+    <div class="dialog">
+      <h3>Choose Game Mode</h3>
+      <div class="mode-options">
+        <button onclick="setGameMode('human')">Two Players</button>
+        <button onclick="setGameMode('computer')">Play vs Computer</button>
+      </div>
+    </div>
+  </div>
 
   <div class="overlay" id="colorOverlay" style="display:none;">
-    <div class="color-picker">
-      <h3>Choose Player Colors</h3>
+    <div class="dialog">
+      <h3>Choose Your Colors</h3>
       <p>Player 1:</p>
       <div class="color-options" id="player1Colors"></div>
       <p>Player 2:</p>
@@ -96,10 +103,23 @@
     </div>
   </div>
 
+  <div class="overlay" id="difficultyOverlay" style="display:none;">
+    <div class="dialog">
+      <h3>Select AI Difficulty</h3>
+      <div class="difficulty-options">
+        <button onclick="setDifficulty('easy')">Easy</button>
+        <button onclick="setDifficulty('medium')">Medium</button>
+        <button onclick="setDifficulty('hard')">Hard</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const grid = document.getElementById("grid");
     let board, cells, currentPlayer, gameOver;
     let playerColors = [];
+    let gameMode = null;
+    let aiDifficulty = "medium";
 
     const colorChoices = [
       { name: "Surfmist", value: "#ECEBE9" },
@@ -108,9 +128,29 @@
       { name: "Green", value: "#1B5E20" },
     ];
 
+    function showModeOverlay() {
+      document.getElementById("modeOverlay").style.display = "flex";
+    }
+
+    function setGameMode(mode) {
+      gameMode = mode;
+      document.getElementById("modeOverlay").style.display = "none";
+      if (mode === "computer") {
+        document.getElementById("difficultyOverlay").style.display = "flex";
+      } else {
+        setupColorPicker();
+      }
+    }
+
+    function setDifficulty(level) {
+      aiDifficulty = level;
+      document.getElementById("difficultyOverlay").style.display = "none";
+      setupColorPicker();
+    }
+
     function setupColorPicker() {
       const storedColors = sessionStorage.getItem("connect5Colors");
-      if (storedColors) {
+      if (storedColors && gameMode !== "computer") {
         playerColors = JSON.parse(storedColors);
         init();
         return;
@@ -119,6 +159,8 @@
       document.getElementById("colorOverlay").style.display = "flex";
       const p1Container = document.getElementById("player1Colors");
       const p2Container = document.getElementById("player2Colors");
+      p1Container.innerHTML = "";
+      p2Container.innerHTML = "";
 
       colorChoices.forEach(color => {
         const p1 = document.createElement("div");
@@ -143,14 +185,22 @@
         p1Container.appendChild(p1);
         p2Container.appendChild(p2);
       });
+
+      if (gameMode === "computer") {
+        playerColors[0] = "#B71C1C"; // Red for computer
+      }
     }
 
     function confirmColors() {
-      if (playerColors.length < 2 || playerColors[0] === playerColors[1]) {
+      if (gameMode !== "computer" && (!playerColors[0] || !playerColors[1] || playerColors[0] === playerColors[1])) {
         alert("Choose two different colors.");
         return;
       }
-      sessionStorage.setItem("connect5Colors", JSON.stringify(playerColors));
+      if (gameMode !== "computer") {
+        sessionStorage.setItem("connect5Colors", JSON.stringify(playerColors));
+      } else {
+        playerColors[1] = playerColors[1] || "#005AA9"; // Default blue for human
+      }
       document.getElementById("colorOverlay").style.display = "none";
       init();
     }
@@ -169,23 +219,82 @@
         const col = i % 10;
 
         cell.addEventListener("click", () => {
-          if (gameOver || board[row][col] !== 0) return;
-          board[row][col] = currentPlayer;
-          cell.style.backgroundColor = playerColors[currentPlayer - 1];
-          if (checkWin(row, col)) {
-            gameOver = true;
-            setTimeout(() => {
-              alert(`Player ${currentPlayer} wins!`);
-            }, 500); // Let the color show before alert
-            return;
-          }
-          currentPlayer = currentPlayer === 1 ? 2 : 1;
+          if (gameOver || board[row][col] !== 0 || (gameMode === "computer" && currentPlayer === 1)) return;
+          makeMove(row, col, 2);
         });
 
         grid.appendChild(cell);
         if (!cells[row]) cells[row] = [];
         cells[row][col] = cell;
       }
+
+      if (gameMode === "computer" && currentPlayer === 1) {
+        computerMove();
+      }
+    }
+
+    function makeMove(row, col, player) {
+      if (board[row][col] !== 0) return;
+      board[row][col] = player;
+      cells[row][col].style.backgroundColor = playerColors[player - 1];
+
+      if (checkWin(row, col)) {
+        gameOver = true;
+        setTimeout(() => {
+          alert(`Player ${player === 1 ? "Computer" : "Human"} wins!`);
+        }, 500);
+        return;
+      }
+
+      currentPlayer = currentPlayer === 1 ? 2 : 1;
+      if (gameMode === "computer" && currentPlayer === 1 && !gameOver) {
+        setTimeout(computerMove, 300);
+      }
+    }
+
+    function computerMove() {
+      let move = null;
+      if (aiDifficulty === "hard") {
+        move = findWinningMove(1) || findWinningMove(2) || getRandomMove();
+      } else if (aiDifficulty === "medium") {
+        move = findWinningMove(2) || findWinningMove(1) || getRandomCenterMove();
+      } else {
+        move = getRandomCenterMove();
+      }
+      if (move) makeMove(move[0], move[1], 1);
+    }
+
+    function findWinningMove(player) {
+      for (let r = 0; r < 10; r++) {
+        for (let c = 0; c < 10; c++) {
+          if (board[r][c] === 0) {
+            board[r][c] = player;
+            if (checkWin(r, c)) {
+              board[r][c] = 0;
+              return [r, c];
+            }
+            board[r][c] = 0;
+          }
+        }
+      }
+      return null;
+    }
+
+    function getRandomMove() {
+      const options = [];
+      for (let r = 0; r < 10; r++) {
+        for (let c = 0; c < 10; c++) {
+          if (board[r][c] === 0) options.push([r, c]);
+        }
+      }
+      return options[Math.floor(Math.random() * options.length)];
+    }
+
+    function getRandomCenterMove() {
+      const centerMoves = [[4,4],[4,5],[5,4],[5,5]];
+      const available = centerMoves.filter(([r,c]) => board[r][c] === 0);
+      if (available.length > 0) return available[Math.floor(Math.random() * available.length)];
+      return getRandomMove();
     }
 
     function checkWin(r, c) {
@@ -207,5 +316,7 @@
       return false;
     }
 
-    function resetGame() {
-      init(); //
+    showModeOverlay();
+  </script>
+</body>
+</html>
