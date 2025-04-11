@@ -60,11 +60,12 @@
       border-radius: 12px;
       text-align: center;
     }
-    .color-options, .mode-options, .difficulty-options {
+    .color-options, .mode-options {
       display: flex;
       justify-content: center;
       gap: 10px;
       margin: 10px 0;
+      flex-wrap: wrap;
     }
     .color-swatch {
       width: 40px;
@@ -80,7 +81,10 @@
 </head>
 <body>
   <div class="grid" id="grid"></div>
-  <button onclick="showModeOverlay()">Reset & Choose Opponent</button>
+  <div>
+    <button onclick="init()">Reset Game</button>
+    <button onclick="showModeOverlay()">New Game Setup</button>
+  </div>
 
   <div class="overlay" id="modeOverlay">
     <div class="dialog">
@@ -94,23 +98,9 @@
 
   <div class="overlay" id="colorOverlay" style="display:none;">
     <div class="dialog">
-      <h3>Choose Your Colors</h3>
-      <p>Player 1:</p>
-      <div class="color-options" id="player1Colors"></div>
-      <p>Player 2:</p>
-      <div class="color-options" id="player2Colors"></div>
+      <h3>Choose Your Color</h3>
+      <div class="color-options" id="playerColors"></div>
       <button onclick="confirmColors()">Start Game</button>
-    </div>
-  </div>
-
-  <div class="overlay" id="difficultyOverlay" style="display:none;">
-    <div class="dialog">
-      <h3>Select AI Difficulty</h3>
-      <div class="difficulty-options">
-        <button onclick="setDifficulty('easy')">Easy</button>
-        <button onclick="setDifficulty('medium')">Medium</button>
-        <button onclick="setDifficulty('hard')">Hard</button>
-      </div>
     </div>
   </div>
 
@@ -119,13 +109,11 @@
     let board, cells, currentPlayer, gameOver;
     let playerColors = [];
     let gameMode = null;
-    let aiDifficulty = "medium";
 
     const colorChoices = [
       { name: "Surfmist", value: "#ECEBE9" },
       { name: "Blue", value: "#005AA9" },
-      { name: "Red", value: "#B71C1C" },
-      { name: "Green", value: "#1B5E20" },
+      { name: "Green", value: "#1B5E20" }
     ];
 
     function showModeOverlay() {
@@ -135,71 +123,53 @@
     function setGameMode(mode) {
       gameMode = mode;
       document.getElementById("modeOverlay").style.display = "none";
+
       if (mode === "computer") {
-        document.getElementById("difficultyOverlay").style.display = "flex";
-      } else {
-        setupColorPicker();
-      }
-    }
-
-    function setDifficulty(level) {
-      aiDifficulty = level;
-      document.getElementById("difficultyOverlay").style.display = "none";
-      setupColorPicker();
-    }
-
-    function setupColorPicker() {
-      const storedColors = sessionStorage.getItem("connect5Colors");
-      if (storedColors && gameMode !== "computer") {
-        playerColors = JSON.parse(storedColors);
-        init();
-        return;
-      }
-
-      document.getElementById("colorOverlay").style.display = "flex";
-      const p1Container = document.getElementById("player1Colors");
-      const p2Container = document.getElementById("player2Colors");
-      p1Container.innerHTML = "";
-      p2Container.innerHTML = "";
-
-      colorChoices.forEach(color => {
-        const p1 = document.createElement("div");
-        const p2 = document.createElement("div");
-        [p1, p2].forEach(swatch => {
+        document.getElementById("colorOverlay").style.display = "flex";
+        const container = document.getElementById("playerColors");
+        container.innerHTML = "";
+        colorChoices.forEach(color => {
+          const swatch = document.createElement("div");
           swatch.className = "color-swatch";
           swatch.style.backgroundColor = color.value;
+          swatch.onclick = () => {
+            playerColors[0] = "#B71C1C"; // Computer is always red
+            playerColors[1] = color.value;
+            container.querySelectorAll(".selected").forEach(el => el.classList.remove("selected"));
+            swatch.classList.add("selected");
+          };
+          container.appendChild(swatch);
         });
-
-        p1.onclick = () => {
-          playerColors[0] = color.value;
-          p1Container.querySelectorAll(".selected").forEach(el => el.classList.remove("selected"));
-          p1.classList.add("selected");
-        };
-
-        p2.onclick = () => {
-          playerColors[1] = color.value;
-          p2Container.querySelectorAll(".selected").forEach(el => el.classList.remove("selected"));
-          p2.classList.add("selected");
-        };
-
-        p1Container.appendChild(p1);
-        p2Container.appendChild(p2);
-      });
-
-      if (gameMode === "computer") {
-        playerColors[0] = "#B71C1C"; // Red for computer
+      } else {
+        playerColors = JSON.parse(sessionStorage.getItem("connect5Colors") || "[]");
+        if (playerColors.length === 2) {
+          init();
+        } else {
+          document.getElementById("colorOverlay").style.display = "flex";
+          const container = document.getElementById("playerColors");
+          container.innerHTML = "";
+          [...colorChoices, { name: "Red", value: "#B71C1C" }].forEach(color => {
+            const swatch = document.createElement("div");
+            swatch.className = "color-swatch";
+            swatch.style.backgroundColor = color.value;
+            swatch.onclick = () => {
+              playerColors = [color.value];
+              container.querySelectorAll(".selected").forEach(el => el.classList.remove("selected"));
+              swatch.classList.add("selected");
+            };
+            container.appendChild(swatch);
+          });
+        }
       }
     }
 
     function confirmColors() {
-      if (gameMode !== "computer" && (!playerColors[0] || !playerColors[1] || playerColors[0] === playerColors[1])) {
-        alert("Choose two different colors.");
-        return;
-      }
-      if (gameMode !== "computer") {
+      if (gameMode === "human") {
+        if (playerColors.length < 1) return alert("Pick player 1 color.");
+        const p1 = playerColors[0];
+        const remaining = [...colorChoices.map(c => c.value), "#B71C1C"].filter(c => c !== p1);
+        playerColors[1] = remaining[0];
         sessionStorage.setItem("connect5Colors", JSON.stringify(playerColors));
-      } else {
-        playerColors[1] = playerColors[1] || "#005AA9"; // Default blue for human
       }
       document.getElementById("colorOverlay").style.display = "none";
       init();
@@ -229,7 +199,7 @@
       }
 
       if (gameMode === "computer" && currentPlayer === 1) {
-        computerMove();
+        setTimeout(computerMove, 300);
       }
     }
 
@@ -241,7 +211,7 @@
       if (checkWin(row, col)) {
         gameOver = true;
         setTimeout(() => {
-          alert(`Player ${player === 1 ? "Computer" : "Human"} wins!`);
+          alert(`Player ${player === 1 ? "Computer" : "Player"} wins!`);
         }, 500);
         return;
       }
@@ -253,48 +223,48 @@
     }
 
     function computerMove() {
-      let move = null;
-      if (aiDifficulty === "hard") {
-        move = findWinningMove(1) || findWinningMove(2) || getRandomMove();
-      } else if (aiDifficulty === "medium") {
-        move = findWinningMove(2) || findWinningMove(1) || getRandomCenterMove();
-      } else {
-        move = getRandomCenterMove();
+      let bestScore = -Infinity, move;
+      for (let r = 0; r < 10; r++) {
+        for (let c = 0; c < 10; c++) {
+          if (board[r][c] === 0) {
+            board[r][c] = 1;
+            let score = minimax(0, false);
+            board[r][c] = 0;
+            if (score > bestScore) {
+              bestScore = score;
+              move = [r, c];
+            }
+          }
+        }
       }
       if (move) makeMove(move[0], move[1], 1);
     }
 
-    function findWinningMove(player) {
+    function minimax(depth, isMaximizing) {
+      if (depth >= 2) return 0;
+      let winner = evaluate();
+      if (winner === 1) return 10 - depth;
+      if (winner === 2) return depth - 10;
+      let scores = [];
       for (let r = 0; r < 10; r++) {
         for (let c = 0; c < 10; c++) {
           if (board[r][c] === 0) {
-            board[r][c] = player;
-            if (checkWin(r, c)) {
-              board[r][c] = 0;
-              return [r, c];
-            }
+            board[r][c] = isMaximizing ? 1 : 2;
+            scores.push(minimax(depth + 1, !isMaximizing));
             board[r][c] = 0;
           }
         }
       }
-      return null;
+      return isMaximizing ? Math.max(...scores) : Math.min(...scores);
     }
 
-    function getRandomMove() {
-      const options = [];
+    function evaluate() {
       for (let r = 0; r < 10; r++) {
         for (let c = 0; c < 10; c++) {
-          if (board[r][c] === 0) options.push([r, c]);
+          if (board[r][c] && checkWin(r, c)) return board[r][c];
         }
       }
-      return options[Math.floor(Math.random() * options.length)];
-    }
-
-    function getRandomCenterMove() {
-      const centerMoves = [[4,4],[4,5],[5,4],[5,5]];
-      const available = centerMoves.filter(([r,c]) => board[r][c] === 0);
-      if (available.length > 0) return available[Math.floor(Math.random() * available.length)];
-      return getRandomMove();
+      return 0;
     }
 
     function checkWin(r, c) {
