@@ -42,11 +42,14 @@
     }
     .red {
       background-color: #ff004c;
-      box-shadow: 0 0 10px #ff004c;
+      box-shadow: 0 0 12px #ff004c;
     }
     .blue {
       background-color: #00aaff;
-      box-shadow: 0 0 10px #00aaff;
+      box-shadow: 0 0 12px #00aaff;
+    }
+    .highlight {
+      box-shadow: 0 0 18px 6px yellow !important;
     }
     button {
       padding: 10px 20px;
@@ -62,14 +65,16 @@
     button:hover {
       background-color: #222;
     }
-    .overlay {
+    .overlay, .floating-message {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0, 0, 0, 0.85);
       display: flex;
       justify-content: center;
       align-items: center;
       z-index: 10;
+    }
+    .overlay {
+      background: rgba(0, 0, 0, 0.85);
     }
     .dialog {
       background: #222;
@@ -77,6 +82,18 @@
       border-radius: 10px;
       text-align: center;
       color: #fff;
+    }
+    .floating-message {
+      color: yellow;
+      font-size: 32px;
+      font-weight: bold;
+      pointer-events: none;
+      text-shadow: 0 0 10px yellow;
+      animation: fadeOut 1s ease-in-out forwards;
+    }
+    @keyframes fadeOut {
+      0% { opacity: 1; }
+      100% { opacity: 0; }
     }
   </style>
 </head>
@@ -95,13 +112,15 @@
       <button onclick="startGame('computer')">Play vs Computer</button>
     </div>
   </div>
+  <div id="messageContainer"></div>
 
 <script>
 const grid = document.getElementById("grid");
 const scoreboard = document.getElementById("scoreboard");
 const modeOverlay = document.getElementById("modeOverlay");
+const messageContainer = document.getElementById("messageContainer");
 
-let board, cells, currentPlayer, gameOver, mode;
+let board, cells, currentPlayer, gameOver, mode, startingPlayer = 1;
 let scores = [0, 0]; // [Red, Blue]
 const classes = ["red", "blue"]; // 1 = Red, 2 = Blue
 
@@ -120,9 +139,18 @@ function updateScoreboard() {
   scoreboard.textContent = `Red: ${scores[0]} | Blue: ${scores[1]}`;
 }
 
+function showFloatingMessage(text) {
+  const msg = document.createElement("div");
+  msg.className = "floating-message";
+  msg.textContent = text;
+  messageContainer.appendChild(msg);
+  setTimeout(() => msg.remove(), 1000);
+}
+
 function resetGame() {
   board = Array.from({ length: 10 }, () => Array(10).fill(0));
-  currentPlayer = 1;
+  currentPlayer = startingPlayer;
+  startingPlayer = 3 - startingPlayer; // alternate who starts
   gameOver = false;
   grid.innerHTML = "";
   cells = [];
@@ -143,17 +171,18 @@ function resetGame() {
   }
 
   updateScoreboard();
+  showFloatingMessage(`${classes[currentPlayer - 1].charAt(0).toUpperCase() + classes[currentPlayer - 1].slice(1)} starts!`);
   if (mode === "computer" && currentPlayer === 1) setTimeout(computerMove, 300);
 }
 
 function makeMove(r, c, player) {
   board[r][c] = player;
   cells[r][c].classList.add(classes[player - 1]);
-  if (checkWin(r, c)) {
+  if (checkWin(r, c, true)) {
     gameOver = true;
     scores[player - 1]++;
     updateScoreboard();
-    setTimeout(() => alert(`${classes[player - 1][0].toUpperCase() + classes[player - 1].slice(1)} wins!`), 100);
+    setTimeout(() => alert(`${classes[player - 1].charAt(0).toUpperCase() + classes[player - 1].slice(1)} wins!`), 100);
     return;
   }
   currentPlayer = 3 - currentPlayer;
@@ -220,20 +249,27 @@ function diagonals(matrix) {
   return diags;
 }
 
-function checkWin(r, c) {
+function checkWin(r, c, highlight = false) {
   const player = board[r][c];
   const dirs = [[1,0], [0,1], [1,1], [1,-1]];
   for (let [dr, dc] of dirs) {
     let count = 1;
+    const winCells = [[r, c]];
     for (let step of [-1, 1]) {
       let nr = r + step * dr, nc = c + step * dc;
       while (nr >= 0 && nr < 10 && nc >= 0 && nc < 10 && board[nr][nc] === player) {
         count++;
+        winCells.push([nr, nc]);
         nr += step * dr;
         nc += step * dc;
       }
     }
-    if (count >= 5) return true;
+    if (count >= 5) {
+      if (highlight) {
+        winCells.forEach(([wr, wc]) => cells[wr][wc].classList.add("highlight"));
+      }
+      return true;
+    }
   }
   return false;
 }
