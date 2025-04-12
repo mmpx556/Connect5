@@ -62,26 +62,62 @@
     button:hover {
       background-color: #222;
     }
+    .overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 10;
+    }
+    .dialog {
+      background: #222;
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      color: #fff;
+    }
   </style>
 </head>
 <body>
   <h1>Connect 5</h1>
-  <div class="scoreboard" id="scoreboard">You: 0 | Computer: 0</div>
+  <div class="scoreboard" id="scoreboard">Red: 0 | Blue: 0</div>
   <div class="grid" id="grid"></div>
   <div>
     <button onclick="resetGame()">Reset</button>
-    <button onclick="startGame()">New Game</button>
+    <button onclick="showModeSelector()">New Game</button>
+  </div>
+  <div class="overlay" id="modeOverlay">
+    <div class="dialog">
+      <h2>Choose Game Mode</h2>
+      <button onclick="startGame('human')">Two Players</button>
+      <button onclick="startGame('computer')">Play vs Computer</button>
+    </div>
   </div>
 
 <script>
 const grid = document.getElementById("grid");
 const scoreboard = document.getElementById("scoreboard");
-let board, cells, currentPlayer, gameOver;
-let scores = [0, 0]; // [Computer, Player]
-const classes = ["red", "blue"]; // Computer = red, Player = blue
+const modeOverlay = document.getElementById("modeOverlay");
+
+let board, cells, currentPlayer, gameOver, mode;
+let scores = [0, 0]; // [Red, Blue]
+const classes = ["red", "blue"]; // 1 = Red, 2 = Blue
+
+function showModeSelector() {
+  modeOverlay.style.display = "flex";
+}
+
+function startGame(selectedMode) {
+  mode = selectedMode;
+  scores = [0, 0];
+  modeOverlay.style.display = "none";
+  resetGame();
+}
 
 function updateScoreboard() {
-  scoreboard.textContent = `You: ${scores[1]} | Computer: ${scores[0]}`;
+  scoreboard.textContent = `Red: ${scores[0]} | Blue: ${scores[1]}`;
 }
 
 function resetGame() {
@@ -99,55 +135,47 @@ function resetGame() {
       grid.appendChild(cell);
       cells[r][c] = cell;
       cell.addEventListener("click", () => {
-        if (gameOver || board[r][c] !== 0 || currentPlayer === 1) return;
-        makeMove(r, c, 2);
+        if (gameOver || board[r][c] !== 0) return;
+        if (mode === "computer" && currentPlayer === 1) return;
+        makeMove(r, c, currentPlayer);
       });
     }
   }
 
   updateScoreboard();
-  setTimeout(computerMove, 300);
-}
-
-function startGame() {
-  scores = [0, 0];
-  resetGame();
+  if (mode === "computer" && currentPlayer === 1) setTimeout(computerMove, 300);
 }
 
 function makeMove(r, c, player) {
-  if (board[r][c] !== 0) return;
   board[r][c] = player;
   cells[r][c].classList.add(classes[player - 1]);
-
   if (checkWin(r, c)) {
     gameOver = true;
     scores[player - 1]++;
     updateScoreboard();
-    setTimeout(() => alert(`${player === 1 ? "Computer" : "You"} win!`), 100);
+    setTimeout(() => alert(`${classes[player - 1][0].toUpperCase() + classes[player - 1].slice(1)} wins!`), 100);
     return;
   }
-
   currentPlayer = 3 - currentPlayer;
-  if (currentPlayer === 1 && !gameOver) setTimeout(computerMove, 300);
+  if (mode === "computer" && currentPlayer === 1 && !gameOver) setTimeout(computerMove, 300);
 }
 
 function computerMove() {
-  let bestMove = null;
-  let bestScore = -Infinity;
+  let best = null, bestScore = -Infinity;
   for (let r = 0; r < 10; r++) {
     for (let c = 0; c < 10; c++) {
       if (board[r][c] === 0 && isNearMove(r, c)) {
         board[r][c] = 1;
-        const score = evaluateBoard(1) - evaluateBoard(2);
+        let score = evaluateBoard(1) - evaluateBoard(2);
         board[r][c] = 0;
         if (score > bestScore) {
           bestScore = score;
-          bestMove = [r, c];
+          best = [r, c];
         }
       }
     }
   }
-  if (bestMove) makeMove(bestMove[0], bestMove[1], 1);
+  if (best) makeMove(best[0], best[1], 1);
 }
 
 function isNearMove(r, c) {
@@ -210,7 +238,7 @@ function checkWin(r, c) {
   return false;
 }
 
-startGame();
+showModeSelector();
 </script>
 </body>
 </html>
