@@ -62,7 +62,7 @@ function resetGame() {
       cells[r][c] = cell;
       cell.addEventListener("click", () => {
         if (gameOver || board[r][c] !== 0) return;
-        // In computer mode, ignore clicks if it's computer's turn (player 1)
+        // In computer mode, ignore clicks if it's computer's turn (player 1 is computer)
         if (mode === "computer" && currentPlayer === 1) return;
         makeMove(r, c, currentPlayer);
       });
@@ -71,9 +71,8 @@ function resetGame() {
 
   updateScoreboard();
   showFloatingMessage(`${classes[currentPlayer - 1].charAt(0).toUpperCase() + classes[currentPlayer - 1].slice(1)} starts!`);
-  // If computer mode and computer (player 1) starts
+  // If computer mode and computer (player 1) starts:
   if (mode === "computer" && currentPlayer === 1) {
-    // Special check: if the board is empty, choose a center move
     if (isBoardEmpty()) {
       setTimeout(() => { makeMove(4, 4, 1); }, 300);
     } else {
@@ -99,9 +98,9 @@ function makeMove(r, c, player) {
   }
 }
 
-// Improved AI: Check for opponent win threat and block, or choose best move
+// Improved AI: Check for immediate blocking and choose best move based on heuristic scores
 function computerMove() {
-  // If board is empty, take central cell
+  // If board is empty, take the center.
   if (isBoardEmpty()) {
     makeMove(4, 4, 1);
     return;
@@ -110,7 +109,7 @@ function computerMove() {
   for (let r = 0; r < 10; r++) {
     for (let c = 0; c < 10; c++) {
       if (board[r][c] === 0 && isNearMove(r, c)) {
-        // Block: Check if opponent (player 2) can win with this move
+        // Block: Check if opponent (player 2) would win by playing here
         board[r][c] = 2;
         if (checkWin(r, c, false)) {
           board[r][c] = 0;
@@ -122,8 +121,8 @@ function computerMove() {
         
         // Evaluate move for computer: simulate computer move (player 1)
         board[r][c] = 1;
-        // Increased weight for defensive blocking; adjust coefficient as needed
-        let score = evaluateBoard(1) - 1.0 * evaluateBoard(2);
+        // Increase defensive sensitivity by using a higher multiplier on opponent's score.
+        let score = evaluateBoard(1) - 1.5 * evaluateBoard(2);
         board[r][c] = 0;
         if (score > bestScore) {
           bestScore = score;
@@ -147,11 +146,11 @@ function isNearMove(r, c) {
   return false;
 }
 
-// Evaluate the board for the given player using simple pattern scoring
+// Evaluate the board for the given player using pattern scoring
 function evaluateBoard(player) {
   let score = 0;
   const lines = [
-    ...board,
+    ...board, 
     ...board[0].map((_, c) => board.map(row => row[c])),
     ...diagonals(board),
     ...diagonals(board.map(row => [...row].reverse()))
@@ -159,13 +158,15 @@ function evaluateBoard(player) {
   for (let line of lines) {
     const str = line.map(cell => cell === player ? 'X' : ' ').join('');
     if (str.includes("XXXXX")) score += 1000;
+    // New: More heavily weight open four (e.g., " XXXX ").
+    if (/\sXXXX\s/.test(` ${str} `)) score += 500;
     if (str.includes("XXXX")) score += 100;
     if (str.includes("XXX")) score += 10;
   }
   return score;
 }
 
-// Get all diagonals from the board (for pattern evaluation)
+// Get all diagonals from the matrix
 function diagonals(matrix) {
   const diags = [];
   for (let i = 0; i <= 2 * matrix.length - 1; i++) {
@@ -183,7 +184,7 @@ function diagonals(matrix) {
 }
 
 // Check win condition starting from cell (r,c) for the current player.
-// If 'highlight' is true, add a glow to the winning cells.
+// If 'highlight' is true, the winning cells are given a neon glow.
 function checkWin(r, c, highlight = false) {
   const player = board[r][c];
   const dirs = [[1,0], [0,1], [1,1], [1,-1]];
