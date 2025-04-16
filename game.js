@@ -62,7 +62,7 @@ function resetGame() {
       cells[r][c] = cell;
       cell.addEventListener("click", () => {
         if (gameOver || board[r][c] !== 0) return;
-        // In computer mode, ignore clicks if it's computer's turn (player 1 is computer)
+        // In computer mode, ignore clicks if it's computer's turn (player 1)
         if (mode === "computer" && currentPlayer === 1) return;
         makeMove(r, c, currentPlayer);
       });
@@ -71,7 +71,7 @@ function resetGame() {
 
   updateScoreboard();
   showFloatingMessage(`${classes[currentPlayer - 1].charAt(0).toUpperCase() + classes[currentPlayer - 1].slice(1)} starts!`);
-  // If computer mode and computer (player 1) starts
+  // If computer mode and computer (player 1) starts:
   if (mode === "computer" && currentPlayer === 1) {
     if (isBoardEmpty()) {
       setTimeout(() => { makeMove(4, 4, 1); }, 300);
@@ -98,7 +98,8 @@ function makeMove(r, c, player) {
   }
 }
 
-// Improved AI: Block opponent threats and select the best move using an enhanced heuristic.
+// Improved AI: Prioritize blocking opponent threats (especially open and broken fours)
+// and choose the best move using an enhanced heuristic.
 function computerMove() {
   // If board is empty, take the center.
   if (isBoardEmpty()) {
@@ -109,8 +110,7 @@ function computerMove() {
   for (let r = 0; r < 10; r++) {
     for (let c = 0; c < 10; c++) {
       if (board[r][c] === 0 && isNearMove(r, c)) {
-        // Defensive check: if opponent (player 2) could win by playing here,
-        // immediately block by returning this move.
+        // Defensive check: if opponent (player 2) can win with this move, block immediately.
         board[r][c] = 2;
         if (checkWin(r, c, false)) {
           board[r][c] = 0;
@@ -120,10 +120,10 @@ function computerMove() {
         }
         board[r][c] = 0;
         
-        // Evaluate move for computer (simulate computer move as player 1)
+        // Evaluate the move for computer: simulate computer move (player 1)
         board[r][c] = 1;
-        // Use a higher multiplier (1.5) to weight opponent potential more heavily.
-        let score = evaluateBoard(1) - 1.5 * evaluateBoard(2);
+        // Adjust the defensive weight: higher weight on opponent's potential = more defensive
+        let score = evaluateBoard(1) - 2.0 * evaluateBoard(2);
         board[r][c] = 0;
         if (score > bestScore) {
           bestScore = score;
@@ -147,8 +147,8 @@ function isNearMove(r, c) {
   return false;
 }
 
-// Evaluate the board for the given player using pattern scoring.
-// Heavily penalizes opponent patterns that are "open" or "broken" fours.
+// Enhanced board evaluation using pattern scoring.
+// Heavily penalizes opponent patterns that are open or broken fours so that the computer is compelled to block.
 function evaluateBoard(player) {
   let score = 0;
   const lines = [
@@ -158,16 +158,16 @@ function evaluateBoard(player) {
     ...diagonals(board.map(row => [...row].reverse()))
   ];
   for (let line of lines) {
-    // Convert line to string where cell matching 'player' is 'X', else ' '
     const str = line.map(cell => cell === player ? 'X' : ' ').join('');
     const padded = ` ${str} `;
     if (padded.includes("XXXXX")) score += 1000;
     // Open four: 4 consecutive with spaces at both ends (e.g., " XXXX ")
-    if (/\sXXXX\s/.test(padded)) score += 2500;
-    // Broken four: e.g., "XX_X" or "X_XX"
-    if (/\sXX_X\s/.test(padded)) score += 1500;
-    if (/\sX_XX\s/.test(padded)) score += 1500;
-    // Closed four gets a moderate score
+    if (/\sXXXX\s/.test(padded)) score += 5000;
+    // Broken four patterns: "XX_X" or "X_XX" or variants with gaps at the ends
+    if (/\sXX_X\s/.test(padded)) score += 3000;
+    if (/\sX_XX\s/.test(padded)) score += 3000;
+    // Additional checks for similar patterns: e.g., "XXX_X" (if exists) could be added similarly.
+    // Closed fours get a moderate score
     if (padded.includes("XXXX")) score += 200;
     if (padded.includes("XXX")) score += 10;
   }
