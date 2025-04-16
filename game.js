@@ -5,7 +5,7 @@ const messageContainer = document.getElementById("messageContainer");
 
 let board, cells, currentPlayer, gameOver, mode, startingPlayer = 1;
 let scores = [0, 0]; // [Red, Blue]
-const classes = ["red", "blue"]; // Player 1 = Red, Player 2 = Blue
+const classes = ["red", "blue"]; // Player 1 = Red (Computer), Player 2 = Blue (Human)
 
 // Display the game mode selector overlay
 function showModeSelector() {
@@ -62,7 +62,7 @@ function resetGame() {
       cells[r][c] = cell;
       cell.addEventListener("click", () => {
         if (gameOver || board[r][c] !== 0) return;
-        // In computer mode, ignore clicks if it's computer's turn (player 1)
+        // In computer mode, ignore clicks if it's computer's turn (player 1 is computer)
         if (mode === "computer" && currentPlayer === 1) return;
         makeMove(r, c, currentPlayer);
       });
@@ -98,8 +98,8 @@ function makeMove(r, c, player) {
   }
 }
 
-// Improved AI: Prioritize blocking opponent threats (especially open and broken fours)
-// and choose the best move using an enhanced heuristic.
+// Improved AI: Block opponent threats and choose the best move using an enhanced heuristic.
+// Incorporates a simple 2-ply minimax when a candidate move presents a significant opponent threat.
 function computerMove() {
   // If board is empty, take the center.
   if (isBoardEmpty()) {
@@ -110,7 +110,7 @@ function computerMove() {
   for (let r = 0; r < 10; r++) {
     for (let c = 0; c < 10; c++) {
       if (board[r][c] === 0 && isNearMove(r, c)) {
-        // Defensive check: if opponent (player 2) can win with this move, block immediately.
+        // Defensive check: if opponent (player 2) can win by playing here, block immediately.
         board[r][c] = 2;
         if (checkWin(r, c, false)) {
           board[r][c] = 0;
@@ -120,13 +120,22 @@ function computerMove() {
         }
         board[r][c] = 0;
         
-        // Evaluate the move for computer: simulate computer move (player 1)
+        // Evaluate candidate move for computer (simulate move for player 1)
         board[r][c] = 1;
-        // Adjust the defensive weight: higher weight on opponent's potential = more defensive
-        let score = evaluateBoard(1) - 2.0 * evaluateBoard(2);
+        let basicScore = evaluateBoard(1) - 2.0 * evaluateBoard(2);
         board[r][c] = 0;
-        if (score > bestScore) {
-          bestScore = score;
+        
+        // If the basic evaluation for the opponent is high (e.g., a 3-chain completed),
+        // perform a 2-ply minimax search for a more refined score.
+        let candidateScore = basicScore;
+        if (evaluateBoard(2) >= 20) {
+          board[r][c] = 1;
+          candidateScore = minimax2(2, false);
+          board[r][c] = 0;
+        }
+        
+        if (candidateScore > bestScore) {
+          bestScore = candidateScore;
           best = [r, c];
         }
       }
@@ -134,6 +143,43 @@ function computerMove() {
   }
   if (best) {
     makeMove(best[0], best[1], 1);
+  }
+}
+
+// Simple 2-ply minimax search.
+// depth: remaining plies; isMaximizing: true if it's computer's turn, false for opponent.
+function minimax2(depth, isMaximizing) {
+  if (depth === 0) {
+    return evaluateBoard(1) - 2.0 * evaluateBoard(2);
+  }
+  let best;
+  if (isMaximizing) {
+    best = -Infinity;
+    // Generate moves near existing ones for efficiency.
+    for (let r = 0; r < 10; r++) {
+      for (let c = 0; c < 10; c++) {
+        if (board[r][c] === 0 && isNearMove(r, c)) {
+          board[r][c] = 1; // computer move
+          let value = minimax2(depth - 1, false);
+          board[r][c] = 0;
+          best = Math.max(best, value);
+        }
+      }
+    }
+    return best;
+  } else {
+    best = Infinity;
+    for (let r = 0; r < 10; r++) {
+      for (let c = 0; c < 10; c++) {
+        if (board[r][c] === 0 && isNearMove(r, c)) {
+          board[r][c] = 2; // opponent move
+          let value = minimax2(depth - 1, true);
+          board[r][c] = 0;
+          best = Math.min(best, value);
+        }
+      }
+    }
+    return best;
   }
 }
 
@@ -148,7 +194,7 @@ function isNearMove(r, c) {
 }
 
 // Enhanced board evaluation using pattern scoring.
-// Heavily penalizes opponent patterns that are open or broken fours so that the computer is compelled to block.
+// Heavily penalizes opponent patterns (especially open or broken fours) so that the computer is compelled to block.
 function evaluateBoard(player) {
   let score = 0;
   const lines = [
@@ -161,12 +207,11 @@ function evaluateBoard(player) {
     const str = line.map(cell => cell === player ? 'X' : ' ').join('');
     const padded = ` ${str} `;
     if (padded.includes("XXXXX")) score += 1000;
-    // Open four: 4 consecutive with spaces at both ends (e.g., " XXXX ")
+    // Open four: 4 consecutive with open ends; extremely dangerous.
     if (/\sXXXX\s/.test(padded)) score += 5000;
-    // Broken four patterns: "XX_X" or "X_XX" or variants with gaps at the ends
+    // Broken four patterns: e.g., "XX_X" or "X_XX"
     if (/\sXX_X\s/.test(padded)) score += 3000;
     if (/\sX_XX\s/.test(padded)) score += 3000;
-    // Additional checks for similar patterns: e.g., "XXX_X" (if exists) could be added similarly.
     // Closed fours get a moderate score
     if (padded.includes("XXXX")) score += 200;
     if (padded.includes("XXX")) score += 10;
@@ -192,7 +237,7 @@ function diagonals(matrix) {
 }
 
 // Check win condition starting from cell (r, c) for the current player.
-// If 'highlight' is true, adds a neon glow effect on the winning cells.
+// If 'highlight' is true, applies a neon glow effect to the winning cells.
 function checkWin(r, c, highlight = false) {
   const player = board[r][c];
   const dirs = [[1,0], [0,1], [1,1], [1,-1]];
