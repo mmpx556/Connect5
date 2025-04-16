@@ -34,6 +34,16 @@ function showFloatingMessage(text) {
   setTimeout(() => msg.remove(), 1000);
 }
 
+// Check if the board is empty
+function isBoardEmpty() {
+  for (let r = 0; r < 10; r++) {
+    for (let c = 0; c < 10; c++) {
+      if (board[r][c] !== 0) return false;
+    }
+  }
+  return true;
+}
+
 // Reset the game: clear board, alternate starting player, and show start message
 function resetGame() {
   board = Array.from({ length: 10 }, () => Array(10).fill(0));
@@ -52,7 +62,7 @@ function resetGame() {
       cells[r][c] = cell;
       cell.addEventListener("click", () => {
         if (gameOver || board[r][c] !== 0) return;
-        // In computer mode, ignore clicks if it's computer's turn (player 1 is computer)
+        // In computer mode, ignore clicks if it's computer's turn (player 1)
         if (mode === "computer" && currentPlayer === 1) return;
         makeMove(r, c, currentPlayer);
       });
@@ -61,8 +71,14 @@ function resetGame() {
 
   updateScoreboard();
   showFloatingMessage(`${classes[currentPlayer - 1].charAt(0).toUpperCase() + classes[currentPlayer - 1].slice(1)} starts!`);
+  // If computer mode and computer (player 1) starts
   if (mode === "computer" && currentPlayer === 1) {
-    setTimeout(computerMove, 300);
+    // Special check: if the board is empty, choose a center move
+    if (isBoardEmpty()) {
+      setTimeout(() => { makeMove(4, 4, 1); }, 300);
+    } else {
+      setTimeout(computerMove, 300);
+    }
   }
 }
 
@@ -85,11 +101,16 @@ function makeMove(r, c, player) {
 
 // Improved AI: Check for opponent win threat and block, or choose best move
 function computerMove() {
+  // If board is empty, take central cell
+  if (isBoardEmpty()) {
+    makeMove(4, 4, 1);
+    return;
+  }
   let best = null, bestScore = -Infinity;
   for (let r = 0; r < 10; r++) {
     for (let c = 0; c < 10; c++) {
       if (board[r][c] === 0 && isNearMove(r, c)) {
-        // Block: if opponent (player 2) can win here, select this move immediately
+        // Block: Check if opponent (player 2) can win with this move
         board[r][c] = 2;
         if (checkWin(r, c, false)) {
           board[r][c] = 0;
@@ -101,7 +122,8 @@ function computerMove() {
         
         // Evaluate move for computer: simulate computer move (player 1)
         board[r][c] = 1;
-        let score = evaluateBoard(1) - 0.8 * evaluateBoard(2);
+        // Increased weight for defensive blocking; adjust coefficient as needed
+        let score = evaluateBoard(1) - 1.0 * evaluateBoard(2);
         board[r][c] = 0;
         if (score > bestScore) {
           bestScore = score;
