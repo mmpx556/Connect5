@@ -1,4 +1,4 @@
-/* ---------- Connect-5 (Neon) – stronger AI ---------- */
+/* ---------- Connect-5 (Neon) – stronger AI w/ book & adaptive depth ---------- */
 /*  Red  = computer (player 1)   Blue = human (player 2)  */
 
 const grid = document.getElementById("grid");
@@ -8,21 +8,31 @@ const messageContainer = document.getElementById("messageContainer");
 
 let board, cells, currentPlayer, gameOver, mode, startingPlayer = 1;
 let scores = [0, 0];
+let turnNumber = 0;          // ply counter
+let lastHumanMove = [4, 4];  // updated when blue moves
 const classes = ["red", "blue"];
 
+/* --- tiny opening book (computer replies when it plays second) --- */
+const book = {
+  "4,4": [4,5], "5,5": [4,5],
+  "4,5": [5,5], "5,4": [5,5],
+  "0,0": [4,4], "0,9": [4,4], "9,0": [4,4], "9,9": [4,4],
+  "0,4": [4,4], "9,4": [4,4], "4,0": [4,4], "4,9": [4,4]
+};
+
 /* ---------- UI helpers ---------- */
-function showModeSelector(){ modeOverlay.style.display="flex"; }
-function updateScoreboard(){ scoreboard.textContent=`Red: ${scores[0]} | Blue: ${scores[1]}`; }
+function showModeSelector(){ modeOverlay.style.display = "flex"; }
+function updateScoreboard(){ scoreboard.textContent = `Red: ${scores[0]} | Blue: ${scores[1]}`; }
 function showFloatingMessage(t){
-  const d=document.createElement("div"); d.className="floating-message"; d.textContent=t;
-  messageContainer.appendChild(d); setTimeout(()=>d.remove(),1000);
+  const d = document.createElement("div");
+  d.className = "floating-message"; d.textContent = t;
+  messageContainer.appendChild(d);
+  setTimeout(()=>d.remove(),1000);
 }
 
 /* ---------- board helpers ---------- */
-function isBoardEmpty(){
-  for(let r=0;r<10;r++)for(let c=0;c<10;c++)if(board[r][c])return false;
-  return true;
-}
+const inBounds = (r,c)=> r>=0 && r<10 && c>=0 && c<10;
+function isBoardEmpty(){ for(let r=0;r<10;r++)for(let c=0;c<10;c++)if(board[r][c])return false; return true; }
 function isNearMove(r,c){
   for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++) if(board[r+i]?.[c+j]) return true;
   return false;
@@ -32,23 +42,27 @@ function diagonals(mat){
   for(let p=0;p<2*N-1;p++){
     let d1=[],d2=[];
     for(let i=0;i<=p;i++){
-      let j=p-i;if(i<N&&j<N){ d1.push(mat[i][j]); d2.push(mat[j][i]); }
-    } d.push(d1,d2);
-  } return d;
+      const j=p-i;
+      if(inBounds(i,j)){ d1.push(mat[i][j]); d2.push(mat[j][i]); }
+    }
+    d.push(d1,d2);
+  }
+  return d;
 }
 
 /* ---------- game init ---------- */
 function resetGame(){
-  board=Array.from({length:10},()=>Array(10).fill(0));
-  currentPlayer=startingPlayer; startingPlayer=3-startingPlayer; gameOver=false;
-  grid.innerHTML=""; cells=[];
+  board = Array.from({length:10},()=>Array(10).fill(0));
+  currentPlayer = startingPlayer; startingPlayer = 3-startingPlayer;
+  gameOver=false; grid.innerHTML=""; cells=[]; turnNumber = 0;
+
   for(let r=0;r<10;r++){ cells[r]=[];
     for(let c=0;c<10;c++){
       const cell=document.createElement("div"); cell.className="cell"; grid.appendChild(cell);
       cells[r][c]=cell;
       cell.addEventListener("click",()=>{
-        if(gameOver||board[r][c])return;
-        if(mode==="computer"&&currentPlayer===1)return;
+        if(gameOver||board[r][c]) return;
+        if(mode==="computer"&&currentPlayer===1) return;
         makeMove(r,c,currentPlayer);
       });
     }
@@ -59,21 +73,27 @@ function resetGame(){
 }
 function startGame(m){ mode=m; scores=[0,0]; modeOverlay.style.display="none"; resetGame(); }
 
-/* ---------- make / check win ---------- */
+/* ---------- make / win ---------- */
 function makeMove(r,c,player){
   board[r][c]=player; cells[r][c].classList.add(classes[player-1]);
-  if(checkWin(r,c,true)){ gameOver=true; scores[player-1]++; updateScoreboard();
-    setTimeout(()=>alert(`${classes[player-1][0].toUpperCase()+classes[player-1].slice(1)} wins!`),100); return;}
-  currentPlayer=3-currentPlayer;
+  if(player===2) lastHumanMove=[r,c];
+  turnNumber++;
+
+  if(checkWin(r,c,true)){
+    gameOver=true; scores[player-1]++; updateScoreboard();
+    setTimeout(()=>alert(`${classes[player-1][0].toUpperCase()+classes[player-1].slice(1)} wins!`),100);
+    return;
+  }
+  currentPlayer = 3-player;
   if(mode==="computer"&&currentPlayer===1&&!gameOver) setTimeout(computerMove,200);
 }
 function checkWin(r,c,hi=false){
   const p=board[r][c],dirs=[[1,0],[0,1],[1,1],[1,-1]];
   for(const[dr,dc]of dirs){
-    let cnt=1,cellsA=[[r,c]];
+    let cnt=1, cellsA=[[r,c]];
     for(const s of[-1,1]){
-      let nr=r+dr*s,nc=c+dc*s;
-      while(board[nr]?.[nc]===p){cnt++;cellsA.push([nr,nc]);nr+=dr*s;nc+=dc*s;}
+      let nr=r+dr*s, nc=c+dc*s;
+      while(board[nr]?.[nc]===p){cnt++;cellsA.push([nr,nc]); nr+=dr*s; nc+=dc*s;}
     }
     if(cnt>=5){ if(hi) cellsA.forEach(([rr,cc])=>cells[rr][cc].classList.add("highlight")); return true;}
   }
@@ -81,75 +101,86 @@ function checkWin(r,c,hi=false){
 }
 
 /* ---------- evaluation ---------- */
-function evalLine(str,playerMark,oppMark){
-  // Returns numerical score for one line string
-  if(str.includes(playerMark.repeat(5))) return 100000;
-  if(str.includes(oppMark.repeat(5)))    return -100000;
+function evalLine(str,pm,om){
+  if(str.includes(pm.repeat(5))) return 100000;
+  if(str.includes(om.repeat(5))) return -100000;
   const pad=` ${str} `;
-  // Open / broken 4s
-  if(pad.includes(` ${playerMark.repeat(4)} `)) return 8000;
-  if(pad.includes(` ${oppMark.repeat(4)} `))    return -9000;
-  if(/XX_X|X_XX/.test(str.replaceAll(playerMark,'X')) ) return playerMark==='X'?5000:-7000;
-  // Triples
-  if(str.includes(playerMark.repeat(3))) return 200;
-  if(str.includes(oppMark.repeat(3)))    return -250;
-  // Doubles
-  if(str.includes(playerMark.repeat(2))) return 30;
-  if(str.includes(oppMark.repeat(2)))    return -35;
+  if(pad.includes(` ${pm.repeat(4)} `)) return 8000;
+  if(pad.includes(` ${om.repeat(4)} `)) return -9000;
+  if(/XX_X|X_XX/.test(str.replaceAll(pm,'X'))) return pm==='X'?5000:-7000;
+  if(str.includes(pm.repeat(3))) return 200;
+  if(str.includes(om.repeat(3))) return -250;
+  if(str.includes(pm.repeat(2))) return 30;
+  if(str.includes(om.repeat(2))) return -35;
   return 0;
 }
 function evaluate(){
   let total=0;
-  const rows=[...board,
-              ...board[0].map((_,c)=>board.map(r=>r[c])),
-              ...diagonals(board),
-              ...diagonals(board.map(r=>[...r].reverse()))];
-  for(const line of rows){
-    const str=line.map(v=>v===1?'X':v===2?'O':' ').join('');
-    total+=evalLine(str,'X','O');
+  const lines=[...board,
+               ...board[0].map((_,c)=>board.map(r=>r[c])),
+               ...diagonals(board),
+               ...diagonals(board.map(r=>[...r].reverse()))];
+  for(const line of lines){
+    total+=evalLine(line.map(v=>v===1?'X':v===2?'O':' ').join(''),'X','O');
   }
   return total;
 }
 
-/* ---------- minimax  (depth 3, α-β) ---------- */
-function minimax(depth,maxPlayer,alpha,beta){
-  const score=evaluate();
-  if(Math.abs(score)>=90000||depth===0) return score;
-  if(maxPlayer){
+/* ---------- minimax (α-β) ---------- */
+function minimax(depth,maxP,a,b){
+  const val=evaluate();
+  if(Math.abs(val)>=90000||depth===0) return val;
+  if(maxP){
     let best=-Infinity;
     for(let r=0;r<10;r++)for(let c=0;c<10;c++){
       if(board[r][c]||!isNearMove(r,c)) continue;
       board[r][c]=1;
-      best=Math.max(best,minimax(depth-1,false,alpha,beta));
+      best=Math.max(best,minimax(depth-1,false,a,b));
       board[r][c]=0;
-      alpha=Math.max(alpha,best); if(beta<=alpha) return best;
+      a=Math.max(a,best); if(b<=a) return best;
     } return best;
   }else{
     let best=Infinity;
     for(let r=0;r<10;r++)for(let c=0;c<10;c++){
       if(board[r][c]||!isNearMove(r,c)) continue;
       board[r][c]=2;
-      best=Math.min(best,minimax(depth-1,true,alpha,beta));
+      best=Math.min(best,minimax(depth-1,true,a,b));
       board[r][c]=0;
-      beta=Math.min(beta,best); if(beta<=alpha) return best;
+      b=Math.min(b,best); if(b<=a) return best;
     } return best;
   }
 }
 
 /* ---------- computer move ---------- */
 function computerMove(){
-  let bestMove=null,bestVal=-Infinity;
+
+  /* 0. opening-book reply (only if computer’s first move & playing second) */
+  if(turnNumber===1 && currentPlayer===1){
+    const key=lastHumanMove.join(",");
+    if(book[key]){ const [br,bc]=book[key]; if(!board[br][bc]){ makeMove(br,bc,1); return; } }
+  }
+
+  /* 1. adaptive depth */
+  const searchDepth = (turnNumber < 4 && currentPlayer === 1) ? 4 : 3;
+
+  /* 2. search best move */
+  let bestMove=null,bestScore=-Infinity;
   for(let r=0;r<10;r++)for(let c=0;c<10;c++){
     if(board[r][c]||!isNearMove(r,c)) continue;
     board[r][c]=1;
-    // Quick win?
-    if(checkWin(r,c,false)){ board[r][c]=0; makeMove(r,c,1); return;}
-    // Immediate block?
-    board[r][c]=2; if(checkWin(r,c,false)){ board[r][c]=0; makeMove(r,c,1); return;}
+
+    /* a) immediate win */
+    if(checkWin(r,c,false)){ board[r][c]=0; makeMove(r,c,1); return; }
+
+    /* b) immediate block */
+    board[r][c]=2;
+    if(checkWin(r,c,false)){ board[r][c]=0; makeMove(r,c,1); return; }
     board[r][c]=1;
-    const val=minimax(2,false,-Infinity,Infinity);  // 3 plies total
+
+    /* c) minimax evaluation */
+    const val=minimax(searchDepth-1,false,-Infinity,Infinity);
     board[r][c]=0;
-    if(val>bestVal){ bestVal=val; bestMove=[r,c]; }
+    if(val>bestScore){ bestScore=val; bestMove=[r,c]; }
   }
   if(bestMove) makeMove(bestMove[0],bestMove[1],1);
 }
