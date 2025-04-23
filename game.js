@@ -1,5 +1,5 @@
-/* ---------- Connect-5 (Neon) – stronger AI w/ book & adaptive depth ---------- */
-/*  Red  = computer (player 1)   Blue = human (player 2)  */
+/* ---------- Connect-5 (Neon) – AI with Threat-Space Search ---------- */
+/*  Red  = computer (player 1)   Blue = human (player 2)               */
 
 const grid = document.getElementById("grid");
 const scoreboard = document.getElementById("scoreboard");
@@ -8,31 +8,30 @@ const messageContainer = document.getElementById("messageContainer");
 
 let board, cells, currentPlayer, gameOver, mode, startingPlayer = 1;
 let scores = [0, 0];
-let turnNumber = 0;          // ply counter
-let lastHumanMove = [4, 4];  // updated when blue moves
+let turnNumber = 0;
+let lastHumanMove = [4, 4];     // updated whenever blue moves
 const classes = ["red", "blue"];
 
-/* --- tiny opening book (computer replies when it plays second) --- */
+/* ----- tiny  opening book (computer’s first reply when playing second) ---- */
 const book = {
-  "4,4": [4,5], "5,5": [4,5],
-  "4,5": [5,5], "5,4": [5,5],
-  "0,0": [4,4], "0,9": [4,4], "9,0": [4,4], "9,9": [4,4],
-  "0,4": [4,4], "9,4": [4,4], "4,0": [4,4], "4,9": [4,4]
+  "4,4":[4,5], "5,5":[4,5],
+  "4,5":[5,5], "5,4":[5,5],
+  "0,0":[4,4],"0,9":[4,4],"9,0":[4,4],"9,9":[4,4],
+  "0,4":[4,4],"9,4":[4,4],"4,0":[4,4],"4,9":[4,4]
 };
 
 /* ---------- UI helpers ---------- */
 function showModeSelector(){ modeOverlay.style.display = "flex"; }
 function updateScoreboard(){ scoreboard.textContent = `Red: ${scores[0]} | Blue: ${scores[1]}`; }
 function showFloatingMessage(t){
-  const d = document.createElement("div");
-  d.className = "floating-message"; d.textContent = t;
-  messageContainer.appendChild(d);
-  setTimeout(()=>d.remove(),1000);
+  const d=document.createElement("div");
+  d.className="floating-message"; d.textContent=t;
+  messageContainer.appendChild(d); setTimeout(()=>d.remove(),1000);
 }
 
 /* ---------- board helpers ---------- */
 const inBounds = (r,c)=> r>=0 && r<10 && c>=0 && c<10;
-function isBoardEmpty(){ for(let r=0;r<10;r++)for(let c=0;c<10;c++)if(board[r][c])return false; return true; }
+function isBoardEmpty(){ for(let r=0;r<10;r++)for(let c=0;c<10;c++)if(board[r][c])return false; return true;}
 function isNearMove(r,c){
   for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++) if(board[r+i]?.[c+j]) return true;
   return false;
@@ -52,17 +51,16 @@ function diagonals(mat){
 
 /* ---------- game init ---------- */
 function resetGame(){
-  board = Array.from({length:10},()=>Array(10).fill(0));
-  currentPlayer = startingPlayer; startingPlayer = 3-startingPlayer;
-  gameOver=false; grid.innerHTML=""; cells=[]; turnNumber = 0;
-
+  board=Array.from({length:10},()=>Array(10).fill(0));
+  currentPlayer=startingPlayer; startingPlayer=3-startingPlayer;
+  gameOver=false; grid.innerHTML=""; cells=[]; turnNumber=0;
   for(let r=0;r<10;r++){ cells[r]=[];
     for(let c=0;c<10;c++){
       const cell=document.createElement("div"); cell.className="cell"; grid.appendChild(cell);
       cells[r][c]=cell;
       cell.addEventListener("click",()=>{
-        if(gameOver||board[r][c]) return;
-        if(mode==="computer"&&currentPlayer===1) return;
+        if(gameOver||board[r][c])return;
+        if(mode==="computer"&&currentPlayer===1)return;
         makeMove(r,c,currentPlayer);
       });
     }
@@ -73,34 +71,29 @@ function resetGame(){
 }
 function startGame(m){ mode=m; scores=[0,0]; modeOverlay.style.display="none"; resetGame(); }
 
-/* ---------- make / win ---------- */
+/* ---------- make move & win check ---------- */
 function makeMove(r,c,player){
   board[r][c]=player; cells[r][c].classList.add(classes[player-1]);
   if(player===2) lastHumanMove=[r,c];
   turnNumber++;
-
-  if(checkWin(r,c,true)){
-    gameOver=true; scores[player-1]++; updateScoreboard();
-    setTimeout(()=>alert(`${classes[player-1][0].toUpperCase()+classes[player-1].slice(1)} wins!`),100);
-    return;
-  }
-  currentPlayer = 3-player;
+  if(checkWin(r,c,true)){ gameOver=true; scores[player-1]++; updateScoreboard();
+    setTimeout(()=>alert(`${classes[player-1][0].toUpperCase()+classes[player-1].slice(1)} wins!`),100); return;}
+  currentPlayer=3-player;
   if(mode==="computer"&&currentPlayer===1&&!gameOver) setTimeout(computerMove,200);
 }
 function checkWin(r,c,hi=false){
   const p=board[r][c],dirs=[[1,0],[0,1],[1,1],[1,-1]];
   for(const[dr,dc]of dirs){
-    let cnt=1, cellsA=[[r,c]];
+    let count=1, winCells=[[r,c]];
     for(const s of[-1,1]){
       let nr=r+dr*s, nc=c+dc*s;
-      while(board[nr]?.[nc]===p){cnt++;cellsA.push([nr,nc]); nr+=dr*s; nc+=dc*s;}
+      while(board[nr]?.[nc]===p){count++;winCells.push([nr,nc]); nr+=dr*s; nc+=dc*s;}
     }
-    if(cnt>=5){ if(hi) cellsA.forEach(([rr,cc])=>cells[rr][cc].classList.add("highlight")); return true;}
-  }
-  return false;
+    if(count>=5){ if(hi) winCells.forEach(([rr,cc])=>cells[rr][cc].classList.add("highlight")); return true;}
+  } return false;
 }
 
-/* ---------- evaluation ---------- */
+/* ---------- fast pattern evaluator ---------- */
 function evalLine(str,pm,om){
   if(str.includes(pm.repeat(5))) return 100000;
   if(str.includes(om.repeat(5))) return -100000;
@@ -116,71 +109,148 @@ function evalLine(str,pm,om){
 }
 function evaluate(){
   let total=0;
-  const lines=[...board,
-               ...board[0].map((_,c)=>board.map(r=>r[c])),
-               ...diagonals(board),
-               ...diagonals(board.map(r=>[...r].reverse()))];
-  for(const line of lines){
+  const rows=[...board,
+              ...board[0].map((_,c)=>board.map(r=>r[c])),
+              ...diagonals(board),
+              ...diagonals(board.map(r=>[...r].reverse()))];
+  for(const line of rows){
     total+=evalLine(line.map(v=>v===1?'X':v===2?'O':' ').join(''),'X','O');
   }
   return total;
 }
 
-/* ---------- minimax (α-β) ---------- */
+/* ---------- mini α-β (fallback) ---------- */
 function minimax(depth,maxP,a,b){
   const val=evaluate();
   if(Math.abs(val)>=90000||depth===0) return val;
   if(maxP){
     let best=-Infinity;
     for(let r=0;r<10;r++)for(let c=0;c<10;c++){
-      if(board[r][c]||!isNearMove(r,c)) continue;
-      board[r][c]=1;
-      best=Math.max(best,minimax(depth-1,false,a,b));
-      board[r][c]=0;
-      a=Math.max(a,best); if(b<=a) return best;
+      if(board[r][c]||!isNearMove(r,c))continue;
+      board[r][c]=1; best=Math.max(best,minimax(depth-1,false,a,b)); board[r][c]=0;
+      if(best>=b) return best; a=Math.max(a,best);
     } return best;
   }else{
     let best=Infinity;
     for(let r=0;r<10;r++)for(let c=0;c<10;c++){
-      if(board[r][c]||!isNearMove(r,c)) continue;
-      board[r][c]=2;
-      best=Math.min(best,minimax(depth-1,true,a,b));
-      board[r][c]=0;
-      b=Math.min(b,best); if(b<=a) return best;
+      if(board[r][c]||!isNearMove(r,c))continue;
+      board[r][c]=2; best=Math.min(best,minimax(depth-1,true,a,b)); board[r][c]=0;
+      if(best<=a) return best; b=Math.min(b,best);
     } return best;
   }
 }
 
+/* ---------- Threat detection utilities ---------- */
+function openFourMoves(player){
+  const moves=[];
+  const scanLines=[...board,
+    ...board[0].map((_,c)=>board.map(r=>r[c])),
+    ...diagonals(board),
+    ...diagonals(board.map(r=>[...r].reverse()))
+  ];
+  scanLines.forEach((line,idx)=>{
+    for(let i=0;i<=line.length-5;i++){
+      const window=line.slice(i,i+5);
+      const count=window.filter(x=>x===player).length;
+      if(count===4 && window.includes(0)){
+        const pos=line===board[idx]? [idx,i+window.indexOf(0)] : null; // quick only for rows
+      }
+    }
+  });
+  return moves;
+}
+
+/* --------- simple Threat-Space Search (depth-limited DFS) --------- */
+function tssDFS(maxDepth){
+  /* Generate threat list: each item = {r,c} that creates open4 for player1 */
+  const threats=[];
+  const dirs=[[1,0],[0,1],[1,1],[1,-1]];
+  for(let r=0;r<10;r++)for(let c=0;c<10;c++){
+    if(board[r][c])continue;
+    board[r][c]=1;
+    // does this move create open 4?
+    for(const[dr,dc]of dirs){
+      let line="";
+      for(let k=-4;k<=4;k++){
+        const nr=r+k*dr,nc=c+k*dc;
+        line+= board[nr]?.[nc]===1?'X': board[nr]?.[nc]===2?'O':' ';
+      }
+      if(/ XXXX /.test(line)){ threats.push([r,c]); break; }
+    }
+    board[r][c]=0;
+  }
+  /* DFS */
+  function dfs(depth,player){
+    if(depth===0) return false;
+    if(player===1){        // computer’s turn → try a threat
+      for(const [tr,tc] of threats){
+        if(board[tr][tc]) continue;
+        board[tr][tc]=1;
+        if(checkWin(tr,tc,false)){ board[tr][tc]=0; return [tr,tc]; }
+        const oppBlocks = criticalBlocks(tr,tc,2);
+        let allFail=true;
+        for(const [br,bc] of oppBlocks){
+          board[br][bc]=2;
+          const res=dfs(depth-1,1);
+          board[br][bc]=0;
+          if(res){ allFail=false; break; }
+        }
+        board[tr][tc]=0;
+        if(!allFail) return [tr,tc];
+      }
+    }
+    return false;
+  }
+  /* For a given threat move, return opponent’s forced blocks (1 or 2 cells) */
+  function criticalBlocks(r,c,opp){
+    const blocks=[];
+    board[r][c]=1;
+    const dirs=[[1,0],[0,1],[1,1],[1,-1]];
+    for(const[dr,dc]of dirs){
+      let seq="";
+      const coords=[];
+      for(let k=-4;k<=4;k++){
+        const nr=r+k*dr,nc=c+k*dc; coords.push([nr,nc]);
+        seq+= board[nr]?.[nc]===1?'X': board[nr]?.[nc]===2?'O':' ';
+      }
+      const m=seq.match(/ XXXX /);
+      if(m){
+        const idx=m.index+1;   // empty spot index in seq
+        const [br,bc]=coords[idx-4]; // convert back to board coords
+        if(inBounds(br,bc)&&board[br][bc]===0) blocks.push([br,bc]);
+      }
+    }
+    board[r][c]=0;
+    return blocks.length?blocks:[[r,c]]; // fallback: at least block the move itself
+  }
+  return dfs(maxDepth,1);
+}
+
 /* ---------- computer move ---------- */
 function computerMove(){
-
   /* 0. opening-book reply (only if computer’s first move & playing second) */
   if(turnNumber===1 && currentPlayer===1){
-    const key=lastHumanMove.join(",");
-    if(book[key]){ const [br,bc]=book[key]; if(!board[br][bc]){ makeMove(br,bc,1); return; } }
+    const reply=book[lastHumanMove.join(",")];
+    if(reply && !board[reply[0]][reply[1]]){ makeMove(reply[0],reply[1],1); return;}
   }
 
-  /* 1. adaptive depth */
-  const searchDepth = (turnNumber < 4 && currentPlayer === 1) ? 4 : 3;
+  /* 1. Threat-space search up to 10 plies */
+  const tMove=tssDFS(10);
+  if(tMove){ makeMove(tMove[0],tMove[1],1); return; }
 
-  /* 2. search best move */
-  let bestMove=null,bestScore=-Infinity;
+  /* 2. adaptive α-β fallback */
+  const depth=(turnNumber<4&&currentPlayer===1)?4:3;
+  let bestVal=-Infinity,bestMove=null;
   for(let r=0;r<10;r++)for(let c=0;c<10;c++){
     if(board[r][c]||!isNearMove(r,c)) continue;
     board[r][c]=1;
-
-    /* a) immediate win */
     if(checkWin(r,c,false)){ board[r][c]=0; makeMove(r,c,1); return; }
-
-    /* b) immediate block */
     board[r][c]=2;
     if(checkWin(r,c,false)){ board[r][c]=0; makeMove(r,c,1); return; }
     board[r][c]=1;
-
-    /* c) minimax evaluation */
-    const val=minimax(searchDepth-1,false,-Infinity,Infinity);
+    const v=minimax(depth-1,false,-Infinity,Infinity);
     board[r][c]=0;
-    if(val>bestScore){ bestScore=val; bestMove=[r,c]; }
+    if(v>bestVal){bestVal=v; bestMove=[r,c];}
   }
   if(bestMove) makeMove(bestMove[0],bestMove[1],1);
 }
