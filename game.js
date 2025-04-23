@@ -255,7 +255,7 @@ function computerMove(){
   if(bestMove) makeMove(bestMove[0],bestMove[1],1);
 }
 /* --------- Threat-Space Search with time limit --------- */
-function tssDFS(maxDepth, timeLimit = 120) {        // timeLimit in ms
+function tssDFS(maxDepth, timeLimit = 500) {        // timeLimit in ms
   const deadline = performance.now() + timeLimit;
 
   /* 1. collect all current computer threats (open-4 after one move) */
