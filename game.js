@@ -140,120 +140,46 @@ function minimax(depth,maxP,a,b){
   }
 }
 
-/* ---------- Threat detection utilities ---------- */
-function openFourMoves(player){
-  const moves=[];
-  const scanLines=[...board,
-    ...board[0].map((_,c)=>board.map(r=>r[c])),
-    ...diagonals(board),
-    ...diagonals(board.map(r=>[...r].reverse()))
-  ];
-  scanLines.forEach((line,idx)=>{
-    for(let i=0;i<=line.length-5;i++){
-      const window=line.slice(i,i+5);
-      const count=window.filter(x=>x===player).length;
-      if(count===4 && window.includes(0)){
-        const pos=line===board[idx]? [idx,i+window.indexOf(0)] : null; // quick only for rows
-      }
-    }
-  });
-  return moves;
-}
-
-/* --------- simple Threat-Space Search (depth-limited DFS) --------- */
-function tssDFS(maxDepth){
-  /* Generate threat list: each item = {r,c} that creates open4 for player1 */
-  const threats=[];
-  const dirs=[[1,0],[0,1],[1,1],[1,-1]];
-  for(let r=0;r<10;r++)for(let c=0;c<10;c++){
-    if(board[r][c])continue;
-    board[r][c]=1;
-    // does this move create open 4?
-    for(const[dr,dc]of dirs){
-      let line="";
-      for(let k=-4;k<=4;k++){
-        const nr=r+k*dr,nc=c+k*dc;
-        line+= board[nr]?.[nc]===1?'X': board[nr]?.[nc]===2?'O':' ';
-      }
-      if(/ XXXX /.test(line)){ threats.push([r,c]); break; }
-    }
-    board[r][c]=0;
-  }
-  /* DFS */
-  function dfs(depth,player){
-    if(depth===0) return false;
-    if(player===1){        // computer’s turn → try a threat
-      for(const [tr,tc] of threats){
-        if(board[tr][tc]) continue;
-        board[tr][tc]=1;
-        if(checkWin(tr,tc,false)){ board[tr][tc]=0; return [tr,tc]; }
-        const oppBlocks = criticalBlocks(tr,tc,2);
-        let allFail=true;
-        for(const [br,bc] of oppBlocks){
-          board[br][bc]=2;
-          const res=dfs(depth-1,1);
-          board[br][bc]=0;
-          if(res){ allFail=false; break; }
-        }
-        board[tr][tc]=0;
-        if(!allFail) return [tr,tc];
-      }
-    }
-    return false;
-  }
-  /* For a given threat move, return opponent’s forced blocks (1 or 2 cells) */
-  function criticalBlocks(r,c,opp){
-    const blocks=[];
-    board[r][c]=1;
-    const dirs=[[1,0],[0,1],[1,1],[1,-1]];
-    for(const[dr,dc]of dirs){
-      let seq="";
-      const coords=[];
-      for(let k=-4;k<=4;k++){
-        const nr=r+k*dr,nc=c+k*dc; coords.push([nr,nc]);
-        seq+= board[nr]?.[nc]===1?'X': board[nr]?.[nc]===2?'O':' ';
-      }
-      const m=seq.match(/ XXXX /);
-      if(m){
-        const idx=m.index+1;   // empty spot index in seq
-        const [br,bc]=coords[idx-4]; // convert back to board coords
-        if(inBounds(br,bc)&&board[br][bc]===0) blocks.push([br,bc]);
-      }
-    }
-    board[r][c]=0;
-    return blocks.length?blocks:[[r,c]]; // fallback: at least block the move itself
-  }
-  return dfs(maxDepth,1);
-}
-
 /* ---------- computer move ---------- */
-function computerMove(){
+function computerMove () {
+
   /* 0. opening-book reply (only if computer’s first move & playing second) */
-  if(turnNumber===1 && currentPlayer===1){
-    const reply=book[lastHumanMove.join(",")];
-    if(reply && !board[reply[0]][reply[1]]){ makeMove(reply[0],reply[1],1); return;}
+  if (turnNumber === 1 && currentPlayer === 1) {
+    const reply = book[lastHumanMove.join(",")];
+    if (reply && !board[reply[0]][reply[1]]) {
+      makeMove(reply[0], reply[1], 1);
+      return;
+    }
   }
 
-  /* 1. Threat-space search up to 10 plies */
-  const tMove=tssDFS(10);
-  if(tMove){ makeMove(tMove[0],tMove[1],1); return; }
+  /* 1. Threat-space search: 10 half-moves, 500 ms budget */
+  const tMove = tssDFS(10, 500);
+  if (tMove) { makeMove(tMove[0], tMove[1], 1); return; }
 
-  /* 2. adaptive α-β fallback */
-  const depth=(turnNumber<4&&currentPlayer===1)?4:3;
-  let bestVal=-Infinity,bestMove=null;
-  for(let r=0;r<10;r++)for(let c=0;c<10;c++){
-    if(board[r][c]||!isNearMove(r,c)) continue;
-    board[r][c]=1;
-    if(checkWin(r,c,false)){ board[r][c]=0; makeMove(r,c,1); return; }
-    board[r][c]=2;
-    if(checkWin(r,c,false)){ board[r][c]=0; makeMove(r,c,1); return; }
-    board[r][c]=1;
-    const v=minimax(depth-1,false,-Infinity,Infinity);
-    board[r][c]=0;
-    if(v>bestVal){bestVal=v; bestMove=[r,c];}
+  /* 2. Adaptive α-β fallback */
+  const depth = (turnNumber < 4 && currentPlayer === 1) ? 4 : 3;
+  let bestVal = -Infinity, bestMove = null;
+
+  for (let r = 0; r < 10; r++) {
+    for (let c = 0; c < 10; c++) {
+      if (board[r][c] || !isNearMove(r, c)) continue;
+
+      board[r][c] = 1;
+      if (checkWin(r, c, false)) { board[r][c] = 0; makeMove(r, c, 1); return; }
+
+      board[r][c] = 2;
+      if (checkWin(r, c, false)) { board[r][c] = 0; makeMove(r, c, 1); return; }
+
+      board[r][c] = 1;
+      const val = minimax(depth - 1, false, -Infinity, Infinity);
+      board[r][c] = 0;
+
+      if (val > bestVal) { bestVal = val; bestMove = [r, c]; }
+    }
   }
-  if(bestMove) makeMove(bestMove[0],bestMove[1],1);
+  if (bestMove) makeMove(bestMove[0], bestMove[1], 1);
 }
+
 /* --------- Threat-Space Search with time limit --------- */
 function tssDFS(maxDepth, timeLimit = 500) {        // timeLimit in ms
   const deadline = performance.now() + timeLimit;
